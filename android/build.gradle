@@ -1,4 +1,4 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
+// 顶层 build.gradle 文件
 
 buildscript {
     repositories {
@@ -13,10 +13,9 @@ buildscript {
         google()
         mavenCentral()
     }
+
     dependencies {
-        // Android Gradle 插件
         classpath "com.android.tools.build:gradle:7.4.0"
-        // Kotlin Gradle 插件
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.23"
     }
 }
@@ -36,23 +35,13 @@ allprojects {
     }
 }
 
-// Kotlin 版本常量
 ext {
     kotlin_version = '1.9.23'
 }
 
-// 子项目（包括插件）统一处理
 subprojects {
-    // —— 新增：确保所有 KotlinCompile 任务都使用相同的 JVM Target 21 —— 
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-        kotlinOptions {
-            jvmTarget = "21"
-        }
-    }
-
     afterEvaluate { project ->
         if (project.extensions.findByName("android") != null) {
-            // 强制将插件 compileSdk 最低设为 31
             Integer pluginCompileSdk = project.android.compileSdk
             if (pluginCompileSdk != null && pluginCompileSdk < 31) {
                 project.logger.warn("Override compileSdk for ${project.name}: $pluginCompileSdk → 31")
@@ -64,30 +53,27 @@ subprojects {
 
         if (project.hasProperty('android')) {
             project.android {
-                // 确保 namespace 存在
                 if (namespace == null) {
                     namespace project.group
                 }
             }
 
-            // 自动修复 manifest 与 namespace
             project.tasks.register("fixManifestsAndNamespace") {
                 doLast {
-                    // 在 build.gradle 中插入 namespace
                     def bd = file("${project.projectDir}/build.gradle")
                     if (bd.exists()) {
                         def text = bd.getText('UTF-8')
                         def mf = file("${project.projectDir}/src/main/AndroidManifest.xml")
                         if (mf.exists()) {
                             def mc = mf.getText('UTF-8')
-                            def pkg = mc.find(/package="([^"]+)"/) { m,p -> p }
+                            def pkg = mc.find(/package="([^"]+)"/) { m, p -> p }
                             if (pkg && !text.contains("namespace")) {
                                 text = text.replaceFirst(/android\s*\{/, "android {\n    namespace '$pkg'")
                                 bd.write(text, 'UTF-8')
                             }
                         }
                     }
-                    // 移除所有 AndroidManifest.xml 中的 package 属性
+
                     fileTree(dir: project.projectDir, includes: ['**/AndroidManifest.xml']).each { File m ->
                         def c = m.getText('UTF-8')
                         if (c.contains('package=')) {
@@ -97,21 +83,25 @@ subprojects {
                     }
                 }
             }
-            // 让 preBuild 依赖上面修复任务
+
             project.tasks.matching { it.name.startsWith("preBuild") }.all {
                 dependsOn project.tasks.named("fixManifestsAndNamespace")
             }
         }
 
-        // 将子项目的输出放到根 build 目录
+        // Kotlin JVM target 统一设置（解决你的当前问题）
+        project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+
         project.buildDir = "${rootProject.buildDir}/${project.name}"
     }
 
-    // 确保 app 模块先被评估
     project.evaluationDependsOn(':app')
 }
 
-// 定义 clean 任务
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
