@@ -1,3 +1,5 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
 buildscript {
     repositories {
         maven { url "https://maven.aliyun.com/repository/google" }
@@ -11,9 +13,10 @@ buildscript {
         google()
         mavenCentral()
     }
-
     dependencies {
+        // Android Gradle 插件
         classpath "com.android.tools.build:gradle:7.4.0"
+        // Kotlin Gradle 插件
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.23"
     }
 }
@@ -33,25 +36,19 @@ allprojects {
     }
 }
 
+// Kotlin 版本常量
 ext {
     kotlin_version = '1.9.23'
 }
 
+// 子项目（包括插件）统一处理
 subprojects {
     afterEvaluate { project ->
         if (project.extensions.findByName("android") != null) {
+            // 强制将插件 compileSdk 最低到 31
             Integer pluginCompileSdk = project.android.compileSdk
             if (pluginCompileSdk != null && pluginCompileSdk < 31) {
-                project.logger.error(
-                    "Warning: Overriding compileSdk version in Flutter plugin: "
-                        + project.name
-                        + " from "
-                        + pluginCompileSdk
-                        + " to 31 (to work around https://issuetracker.google.com/issues/199180389)."
-                        + "\nIf there is not a new version of " + project.name + ", consider filing an issue against "
-                        + project.name
-                        + " to increase their compileSdk to the latest (otherwise try updating to the latest version)."
-                )
+                project.logger.warn("Override compileSdk for ${project.name}: $pluginCompileSdk → 31")
                 project.android {
                     compileSdk 31
                 }
@@ -60,66 +57,62 @@ subprojects {
 
         if (project.hasProperty('android')) {
             project.android {
+                // 确保 namespace 存在
                 if (namespace == null) {
-                    project.logger.error(
-                        "Warning: 'namespace' is not specified in Flutter plugin: "
-                            + project.name
-                            + ". Defaulting to the package name "
-                            + project.group
-                            + " of the plugin.\nSee "
-                            + "https://d.android.com/r/tools/upgrade-assistant/set-namespace"
-                            + " for information about setting the namespace."
-                    )
                     namespace project.group
                 }
             }
 
-            // 自动修复 AndroidManifest 和 namespace 问题
+            // 自动修复 manifest 与 namespace
             project.tasks.register("fixManifestsAndNamespace") {
                 doLast {
-                    // 自动加 namespace 到 build.gradle
-                    def buildGradleFile = file("${project.projectDir}/build.gradle")
-                    if (buildGradleFile.exists()) {
-                        def buildGradleContent = buildGradleFile.getText('UTF-8')
-                        def manifestFile = file("${project.projectDir}/src/main/AndroidManifest.xml")
-                        if (manifestFile.exists()) {
-                            def manifestContent = manifestFile.getText('UTF-8')
-                            def packageName = manifestContent.find(/package="([^"]+)"/) { match, p -> p }
-                            if (packageName && !buildGradleContent.contains("namespace")) {
-                                println "Setting namespace in ${buildGradleFile}"
-                                buildGradleContent = buildGradleContent.replaceFirst(
-                                    /android\s*\{/, "android {\n    namespace '${packageName}'"
-                                )
-                                buildGradleFile.write(buildGradleContent, 'UTF-8')
+                    // 在 build.gradle 中插入 namespace
+                    def bd = file("${project.projectDir}/build.gradle")
+                    if (bd.exists()) {
+                        def text = bd.getText('UTF-8')
+                        def mf = file("${project.projectDir}/src/main/AndroidManifest.xml")
+                        if (mf.exists()) {
+                            def mc = mf.getText('UTF-8')
+                            def pkg = mc.find(/package="([^"]+)"/) { m,p -> p }
+                            if (pkg && !text.contains("namespace")) {
+                                text = text.replaceFirst(/android\s*\{/, "android {\n    namespace '$pkg'")
+                                bd.write(text, 'UTF-8')
                             }
                         }
                     }
-
-                    // 移除 AndroidManifest.xml 中的 package 属性
-                    def manifests = fileTree(dir: project.projectDir, includes: ['**/AndroidManifest.xml'])
-                    manifests.each { File manifestFile ->
-                        def manifestContent = manifestFile.getText('UTF-8')
-                        if (manifestContent.contains('package=')) {
-                            println "Removing package attribute from ${manifestFile}"
-                            manifestContent = manifestContent.replaceAll(/package="[^"]*"/, '')
-                            manifestFile.write(manifestContent, 'UTF-8')
+                    // 移除所有 AndroidManifest.xml 中的 package 属性
+                    fileTree(dir: project.projectDir, includes: ['**/AndroidManifest.xml']).each { File m ->
+                        def c = m.getText('UTF-8')
+                        if (c.contains('package=')) {
+                            c = c.replaceAll(/package="[^"]*"/, '')
+                            m.write(c, 'UTF-8')
                         }
                     }
                 }
             }
-
-            // 在构建前运行修复任务
+            // 让 preBuild 依赖上面修复任务
             project.tasks.matching { it.name.startsWith("preBuild") }.all {
                 dependsOn project.tasks.named("fixManifestsAndNamespace")
             }
         }
 
+        // 将子项目的输出放到根 build 目录
         project.buildDir = "${rootProject.buildDir}/${project.name}"
     }
 
+    // 确保 app 模块先被评估
     project.evaluationDependsOn(':app')
 }
 
+// 定义 clean 任务
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
+}
+
+// —— 以下为高亮新增：统一 Kotlin 编译的 JVM Target 为 21 —— 
+// 此段必须放到文件末尾，确保所有 KotlinCompile 任务生效
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        jvmTarget = "21"
+    }
 }
