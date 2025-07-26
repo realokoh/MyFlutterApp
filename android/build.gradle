@@ -43,9 +43,16 @@ ext {
 
 // 子项目（包括插件）统一处理
 subprojects {
+    // —— 新增：确保所有 KotlinCompile 任务都使用相同的 JVM Target 21 —— 
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "21"
+        }
+    }
+
     afterEvaluate { project ->
         if (project.extensions.findByName("android") != null) {
-            // 强制将插件 compileSdk 最低到 31
+            // 强制将插件 compileSdk 最低设为 31
             Integer pluginCompileSdk = project.android.compileSdk
             if (pluginCompileSdk != null && pluginCompileSdk < 31) {
                 project.logger.warn("Override compileSdk for ${project.name}: $pluginCompileSdk → 31")
@@ -107,12 +114,4 @@ subprojects {
 // 定义 clean 任务
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
-}
-
-// —— 以下为高亮新增：统一 Kotlin 编译的 JVM Target 为 21 —— 
-// 此段必须放到文件末尾，确保所有 KotlinCompile 任务生效
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-    kotlinOptions {
-        jvmTarget = "21"
-    }
 }
